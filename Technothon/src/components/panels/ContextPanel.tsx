@@ -1,0 +1,160 @@
+import { useState, useEffect } from 'react';
+import { QueryResult } from '@/types';
+import { SQLPanel } from '@/components/sql/SQLPanel';
+import { SafetyModal } from '@/components/sql/SafetyModal';
+import { DataTable } from '@/components/data/DataTable';
+import { ChartWidget } from '@/components/data/ChartWidget';
+import { LoadingSkeleton } from '@/components/data/LoadingSkeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Code, Table2, BarChart3 } from 'lucide-react';
+
+interface ContextPanelProps {
+  sql: string | null;
+  results: QueryResult | null;
+  isLoading?: boolean;
+}
+
+export function ContextPanel({ sql, results, isLoading }: ContextPanelProps) {
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'sql' | 'table' | 'charts'>('sql');
+
+  // ✅ Auto-switch to Table tab when results arrive
+  useEffect(() => {
+    if (results) {
+      setActiveTab('table');
+    }
+  }, [results]);
+
+  // 🔒 Safe guards for real backend data (n8n)
+const safeRows = results?.rows ?? [];
+const safeColumns = results?.columns ?? [];
+
+  // Chart data
+  // 📊 Bar chart data
+const barChartData = safeRows.slice(0, 6).map((row) => ({
+  name: String(row?.[safeColumns[0]] ?? "").slice(0, 10),
+  value: Number(row?.[safeColumns[2]]) || 0,
+}));
+
+// 📈 Line chart data
+const lineChartData = safeRows.slice(0, 6).map((row) => ({
+  name: String(row?.[safeColumns[0]] ?? "").slice(0, 10),
+  value: Number(row?.[safeColumns[1]]) || 0,
+}));
+
+// 🥧 Pie chart data
+const pieChartData = safeRows.slice(0, 4).map((row) => ({
+  name: String(row?.[safeColumns[3] ?? safeColumns[0]] ?? ""),
+  value: Number(row?.[safeColumns[2] ?? safeColumns[1]]) || 1,
+}));
+
+
+  if (!sql && !results && !isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <h3 className="text-lg font-semibold">
+            No <span className="text-gradient-primary">Query Results</span>
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+            Ask a question in chat to generate SQL and visualize insights instantly.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as any)}
+        className="flex-1 flex flex-col"
+      >
+        <div className="px-4 pt-4">
+          <TabsList className="glass-card p-1 w-full justify-start">
+            <TabsTrigger value="sql" className="gap-2 data-[state=active]:bg-primary/20">
+              <Code className="w-4 h-4" />
+              SQL
+            </TabsTrigger>
+            <TabsTrigger value="table" className="gap-2 data-[state=active]:bg-primary/20">
+              <Table2 className="w-4 h-4" />
+              Table
+            </TabsTrigger>
+            <TabsTrigger value="charts" className="gap-2 data-[state=active]:bg-primary/20">
+              <BarChart3 className="w-4 h-4" />
+              Charts
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <ScrollArea className="flex-1 p-4">
+          <TabsContent value="sql" className="mt-0 space-y-4">
+            {isLoading ? (
+              <LoadingSkeleton type="sql" />
+            ) : sql ? (
+              <SQLPanel sql={sql} />
+            ) : null}
+          </TabsContent>
+
+          <TabsContent value="table" className="mt-0">
+            {isLoading ? (
+              <LoadingSkeleton type="table" />
+            ) : results ? (
+              <DataTable
+                result={results}
+                onExportCSV={() => console.log('Export CSV')}
+                onExportSheets={() => console.log('Export Sheets')}
+              />
+            ) : null}
+          </TabsContent>
+
+          <TabsContent value="charts" className="mt-0 space-y-4">
+            {isLoading ? (
+              <>
+                <LoadingSkeleton type="chart" />
+                <LoadingSkeleton type="chart" />
+              </>
+            ) : results ? (
+              <div className="grid gap-4">
+                <ChartWidget
+                  type="bar"
+                  data={barChartData}
+                  dataKey="value"
+                  nameKey="name"
+                  title="Revenue by Customer"
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <ChartWidget
+                    type="line"
+                    data={lineChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    title="Order Trends"
+                  />
+                  <ChartWidget
+                    type="pie"
+                    data={pieChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    title="Segment Distribution"
+                  />
+                </div>
+              </div>
+            ) : null}
+          </TabsContent>
+        </ScrollArea>
+      </Tabs>
+
+      <SafetyModal
+        open={showSafetyModal}
+        onClose={() => setShowSafetyModal(false)}
+        onConfirm={() => setShowSafetyModal(false)}
+        sql={sql || ''}
+        affectedTables={['orders', 'order_items']}
+        estimatedRows={89}
+      />
+    </div>
+  );
+}
